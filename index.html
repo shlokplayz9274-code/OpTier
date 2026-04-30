@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MC Tiers</title>
+
+  <style>
+    body {
+      margin:0;
+      font-family:Segoe UI;
+      background:#0b0b0b;
+      color:white;
+    }
+
+    .container { max-width:1000px; margin:auto; }
+
+    .tabs {
+  display:flex;
+  gap:10px;
+  padding:15px;
+  background:#111;
+  overflow-x:auto;
+
+  /* 🔥 hide scrollbar */
+  scrollbar-width:none;       /* Firefox */
+  -ms-overflow-style:none;    /* IE/Edge */
+}
+
+.tabs::-webkit-scrollbar {
+  display:none;               /* Chrome/Safari */
+}
+
+    .tab {
+      padding:10px 12px;
+      background:#1a1a1a;
+      border-radius:10px;
+      cursor:pointer;
+      min-width:70px;
+      transition:0.2s;
+    }
+
+    .tab:hover { background:#222; }
+
+    .active {
+      background:#00ff99;
+      color:black;
+    }
+
+    .searchBox { padding:15px; position:relative; }
+
+    input {
+      padding:12px;
+      width:100%;
+      background:#111;
+      border:1px solid #222;
+      color:white;
+      border-radius:8px;
+    }
+
+    #suggestions{
+      position:absolute;
+      top:60px;
+      left:15px;
+      right:15px;
+      background:#111;
+      border:1px solid #222;
+      border-radius:8px;
+      z-index:999;
+      max-height:250px;
+      overflow-y:auto;
+    }
+
+    .suggestion{
+      padding:10px;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+
+    .suggestion:hover{
+      background:#1f1f1f;
+    }
+
+    .table-wrapper{ overflow-x:auto; }
+
+    table {
+      width:100%;
+      min-width:700px;
+      background:#111;
+      border-radius:10px;
+      border-collapse: collapse;
+    }
+
+    th,td {
+      padding:14px;
+      border-bottom:1px solid rgba(255,255,255,0.05);
+      vertical-align: middle;
+    }
+
+    a { color:#00ff99; text-decoration:none; }
+
+    @keyframes goldGlow {
+      0% { box-shadow:0 0 10px rgba(255,215,0,0.2); }
+      50% { box-shadow:0 0 25px rgba(255,215,0,0.8); }
+      100% { box-shadow:0 0 10px rgba(255,215,0,0.2); }
+    }
+
+    @keyframes silverGlow {
+      0% { box-shadow:0 0 10px rgba(192,192,192,0.2); }
+      50% { box-shadow:0 0 25px rgba(192,192,192,0.8); }
+      100% { box-shadow:0 0 10px rgba(192,192,192,0.2); }
+    }
+
+    @keyframes bronzeGlow {
+      0% { box-shadow:0 0 10px rgba(205,127,50,0.2); }
+      50% { box-shadow:0 0 25px rgba(205,127,50,0.8); }
+      100% { box-shadow:0 0 10px rgba(205,127,50,0.2); }
+    }
+
+    .rank1 { background:rgba(255,215,0,0.08); animation:goldGlow 2s infinite; font-weight:bold; }
+    .rank2 { background:rgba(192,192,192,0.08); animation:silverGlow 2s infinite; font-weight:bold; }
+    .rank3 { background:rgba(205,127,50,0.08); animation:bronzeGlow 2s infinite; font-weight:bold; }
+
+    .profile-wrap{
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+
+    .skin-avatar{
+      width:48px;
+      height:48px;
+      border-radius:10px;
+      background:#000;
+      overflow:hidden;
+    }
+
+    .skin-avatar img{
+      width:100%;
+      height:100%;
+      image-rendering: pixelated;
+    }
+
+    .shiny-wrap img{
+      height:28px;
+      animation: goldGlow 2s infinite;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="tabs" id="tabs">
+
+  <!-- Compare Button -->
+  <div class="tab" onclick="window.location.href='compare.html'">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+      <div style="font-size:18px;">⚔️</div>
+      <div style="font-size:10px;">Compare</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="searchBox">
+  <input id="search" placeholder="Search player...">
+  <div id="suggestions"></div>
+</div>
+
+<h2 id="title"></h2>
+
+<div class="table-wrapper">
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Player</th>
+<th>Region</th>
+<th>Modes</th>
+</tr>
+</thead>
+<tbody id="table"></tbody>
+</table>
+</div>
+
+</div>
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAzKYVQWthAci583dZqkXi2zm3JHNNMeqk",
+  authDomain: "mc-tiers-ranking.firebaseapp.com",
+  projectId: "mc-tiers-ranking",
+  storageBucket: "mc-tiers-ranking.firebasestorage.app",
+  messagingSenderId: "909650175085",
+  appId: "1:909650175085:web:0fb576c2b8277a58b64b64"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const modes = [
+  "overall","uhc","pot","vanilla","nethop","smp","sword","axe","mace"
+];
+
+let mode = new URLSearchParams(window.location.search).get("mode") || "overall";
+let searchText = "";
+
+const tabsDiv = document.getElementById("tabs");
+const table = document.getElementById("table");
+const searchInput = document.getElementById("search");
+const suggestions = document.getElementById("suggestions");
+const title = document.getElementById("title");
+
+/* ---------------- TABS ---------------- */
+modes.forEach(m=>{
+  let btn = document.createElement("div");
+  btn.className = "tab " + (m===mode ? "active" : "");
+
+  btn.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+      <img src="https://mctiers.com/tier_icons/${m}.svg"
+        style="width:22px;"
+        onerror="this.src='https://mctiers.com/tier_icons/sword.svg';this.onerror=null;">
+      <div style="font-size:10px;">${m}</div>
+    </div>
+  `;
+
+  btn.onclick = ()=> window.location.search = "?mode=" + m;
+  tabsDiv.appendChild(btn);
+});
+
+title.innerText = mode.toUpperCase() + " Rankings";
+
+/* ---------------- SEARCH ---------------- */
+searchInput.addEventListener("input",(e)=>{
+  searchText = e.target.value.toLowerCase();
+  render();
+  showSuggestions();
+});
+
+document.addEventListener("click",(e)=>{
+  if(!e.target.closest(".searchBox")){
+    suggestions.innerHTML = "";
+  }
+});
+
+window.openProfile = function(name){
+  window.location.href = `profile.html?name=${name}`;
+};
+
+/* ---------------- DATA ---------------- */
+let allPlayers = [];
+
+/* loading state */
+table.innerHTML = "<tr><td colspan='4'>Loading...</td></tr>";
+
+onSnapshot(collection(db,"players"), (snapshot)=>{
+  allPlayers = [];
+  snapshot.forEach(doc=> allPlayers.push(doc.data()));
+  render();
+});
+
+/* ---------------- TIER SYSTEM ---------------- */
+function getTier(p){
+  p = Number(p || 0);
+
+  if(p < 5) return "-";
+  if(p < 20) return "LT5";
+  if(p < 40) return "HT5";
+  if(p < 70) return "LT4";
+  if(p < 100) return "HT4";
+  if(p < 140) return "LT3";
+  if(p < 180) return "HT3";
+  if(p < 220) return "LT2";
+  if(p < 260) return "HT2";
+  if(p < 300) return "LT1";
+
+  return "HT1";
+}
+
+/* ---------------- SUGGESTIONS ---------------- */
+function showSuggestions(){
+  if(!searchText){
+    suggestions.innerHTML = "";
+    return;
+  }
+
+  let matches = allPlayers
+    .filter(p => p.name.toLowerCase().includes(searchText))
+    .slice(0,5);
+
+  suggestions.innerHTML = matches.map(p=>`
+    <div class="suggestion" onclick="openProfile('${p.name}')">
+      <img src="https://mc-heads.net/avatar/${p.name}/24">
+      <div>${p.name}</div>
+    </div>
+  `).join("");
+}
+
+/* ---------------- MAIN RENDER ---------------- */
+function render(){
+
+  let players = [...allPlayers];
+
+  if(searchText){
+    players = players.filter(p=>p.name.toLowerCase().includes(searchText));
+  }
+
+  players.sort((a,b)=>{
+    if(mode === "overall"){
+      let ta = Object.values(a.modes||{}).reduce((x,y)=>x+y,0);
+      let tb = Object.values(b.modes||{}).reduce((x,y)=>x+y,0);
+      return tb - ta;
+    }
+    return (b.modes?.[mode]||0) - (a.modes?.[mode]||0);
+  });
+
+  let html = "";
+  let rank = 1;
+
+  players.forEach((p)=>{
+
+    if(mode !== "overall" && !(mode in (p.modes||{}))) return;
+
+    let i = rank - 1;
+
+    let rankClass =
+      i===0 ? "rank1" :
+      i===1 ? "rank2" :
+      i===2 ? "rank3" : "";
+
+    let nameStyle =
+      i===0 ? "background:linear-gradient(45deg,#00f,#0ff);-webkit-background-clip:text;color:transparent;" :
+      i===1 ? "color:#ff4444;" :
+      i===2 ? "color:#ffaa00;" :
+      "color:#00ff99;";
+
+    html += `
+      <tr class="${rankClass}">
+        <td>${rank}</td>
+
+        <td>
+          <div class="profile-wrap">
+            <div class="skin-avatar">
+              <img src="https://mc-heads.net/avatar/${p.name}/48">
+            </div>
+
+            <a href="profile.html?name=${p.name}&rank=${rank}"
+               style="${nameStyle}">
+              ${p.name}
+            </a>
+          </div>
+        </td>
+
+        <td>${p.region || "AS"}</td>
+
+        <td style="display:flex;gap:10px;flex-wrap:wrap;">
+          ${
+            mode === "overall"
+              ? Object.keys(p.modes || {}).map(m=>`
+                  <div style="text-align:center;">
+                    <img src="https://mctiers.com/tier_icons/${m}.svg"
+                         style="width:22px;"
+                         onerror="this.src='https://mctiers.com/tier_icons/sword.svg';this.onerror=null;">
+                    <div style="font-size:11px;">${getTier(p.modes[m])}</div>
+                  </div>
+                `).join("")
+              : `
+                  <div style="text-align:center;">
+                    <img src="https://mctiers.com/tier_icons/${mode}.svg"
+                         style="width:22px;"
+                         onerror="this.src='https://mctiers.com/tier_icons/sword.svg';this.onerror=null;">
+                    <div style="font-size:11px;">${getTier(p.modes?.[mode])}</div>
+                  </div>
+                `
+          }
+        </td>
+      </tr>
+    `;
+
+    rank++;
+  });
+
+  table.innerHTML = html || "<tr><td colspan='4'>No players found</td></tr>";
+}
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Mod Panel</title>
+
+  <style>
+    body {
+      background:#0a0a0a;
+      color:white;
+      font-family:Arial;
+      text-align:center;
+    }
+
+    input, button, select {
+      margin:5px;
+      padding:8px;
+      background:#111;
+      border:1px solid #333;
+      color:white;
+    }
+
+    button:hover { background:#222; }
+
+    #list p {
+      cursor:pointer;
+      padding:4px;
+    }
+
+    #list p:hover {
+      color:#00ff99;
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- LOGIN -->
+<div id="loginBox">
+  <h2>Mod Login</h2>
+  <input id="email" placeholder="Email"><br>
+  <input id="password" type="password" placeholder="Password"><br>
+  <button id="loginBtn">Login</button>
+</div>
+
+<!-- MOD PANEL -->
+<div id="modPanel" style="display:none;">
+
+<h2>Moderator Panel</h2>
+
+<button id="logoutBtn">Logout</button>
+
+<hr>
+
+<input id="name" placeholder="Player Name"><br>
+
+<select id="mode"></select><br>
+
+<input id="points" type="number" placeholder="Points"><br>
+<input id="region" placeholder="Region (AS/EU/NA)"><br>
+
+<button id="addPlayerBtn">Add Player</button>
+<button id="saveBtn">Save / Update</button>
+
+<button id="deleteModeBtn" style="background:#ff4444;">Delete Mode</button>
+<button id="deletePlayerBtn" style="background:#ff0000;">Delete Player</button>
+
+<hr>
+
+<h3>Players List</h3>
+<div id="list"></div>
+
+</div>
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getFirestore,
+  doc,
+  setDoc,
+  getDoc,
+  deleteDoc,
+  collection,
+  onSnapshot,
+  updateDoc,
+  deleteField,
+  addDoc,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+/* FIREBASE */
+const firebaseConfig = {
+  apiKey: "AIzaSyAzKYVQWthAci583dZqkXi2zm3JHNNMeqk",
+  authDomain: "mc-tiers-ranking.firebaseapp.com",
+  projectId: "mc-tiers-ranking",
+  storageBucket: "mc-tiers-ranking.firebasestorage.app",
+  messagingSenderId: "909650175085",
+  appId: "1:909650175085:web:0fb576c2b8277a58b64b64"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+/* LOG FUNCTION */
+async function addLog(action, player, mode, points){
+  const user = auth.currentUser;
+  if(!user) return;
+
+  await addDoc(collection(db,"logs"),{
+    email: user.email,
+    action,
+    player: player || "",
+    mode: mode || "",
+    points: points ?? "",
+    time: serverTimestamp()
+  });
+}
+
+/* MOD EMAILS */
+const MODS = [
+  "you@gmail.com",
+  "rishi1224@gmail.com"
+];
+
+/* MODES */
+const modes = [
+  "overall","uhc","pot","vanilla","nethop","smp","sword","axe","mace","diasmp","cart"
+];
+
+/* DOM */
+const loginBox = document.getElementById("loginBox");
+const modPanel = document.getElementById("modPanel");
+
+const email = document.getElementById("email");
+const password = document.getElementById("password");
+
+const nameInput = document.getElementById("name");
+const modeSelect = document.getElementById("mode");
+const pointsInput = document.getElementById("points");
+const regionInput = document.getElementById("region");
+
+const listDiv = document.getElementById("list");
+
+/* LOGIN */
+document.getElementById("loginBtn").onclick = async () => {
+  try {
+    await signInWithEmailAndPassword(auth, email.value, password.value);
+  } catch(e){
+    alert(e.message);
+  }
+};
+
+/* AUTH */
+onAuthStateChanged(auth, (user)=>{
+  if(user && MODS.includes(user.email)){
+    loginBox.style.display = "none";
+    modPanel.style.display = "block";
+  } else {
+    loginBox.style.display = "block";
+    modPanel.style.display = "none";
+    if(user){
+      alert("Not a moderator");
+      signOut(auth);
+    }
+  }
+});
+
+/* LOGOUT */
+document.getElementById("logoutBtn").onclick = ()=> signOut(auth);
+
+/* MODE LIST */
+modes.forEach(m=>{
+  let opt = document.createElement("option");
+  opt.value = m;
+  opt.innerText = m.toUpperCase();
+  modeSelect.appendChild(opt);
+});
+
+/* ADD PLAYER */
+async function addPlayer(){
+  let name = nameInput.value.trim();
+  let mode = modeSelect.value;
+  let points = Number(pointsInput.value);
+  let region = regionInput.value || "AS";
+
+  if(!name || !mode || isNaN(points)){
+    alert("Fill all fields");
+    return;
+  }
+
+  let ref = doc(db,"players",name);
+  let snap = await getDoc(ref);
+
+  if(snap.exists()){
+    alert("Player already exists!");
+    return;
+  }
+
+  await setDoc(ref,{
+    name,
+    region,
+    modes:{ [mode]: points }
+  });
+
+  await addLog("add_player", name, mode, points);
+
+  alert("Player Added!");
+}
+
+/* UPDATE PLAYER */
+async function updatePlayer(){
+  let name = nameInput.value.trim();
+  let mode = modeSelect.value;
+  let points = Number(pointsInput.value);
+  let region = regionInput.value || "AS";
+
+  if(!name || !mode || isNaN(points)){
+    alert("Fill all fields");
+    return;
+  }
+
+  let ref = doc(db,"players",name);
+  let snap = await getDoc(ref);
+
+  let data = snap.exists() ? snap.data() : { name, modes:{} };
+
+  if(!data.modes) data.modes = {};
+
+  data.modes[mode] = points;
+  data.region = region;
+
+  await setDoc(ref,data);
+
+  await addLog("update_player", name, mode, points);
+
+  alert("Updated!");
+}
+
+/* DELETE MODE */
+async function deleteMode(){
+  let name = nameInput.value.trim();
+  let mode = modeSelect.value;
+
+  if(!name || !mode){
+    alert("Enter player + mode");
+    return;
+  }
+
+  await updateDoc(doc(db,"players",name), {
+    [`modes.${mode}`]: deleteField()
+  });
+
+  await addLog("delete_mode", name, mode, null);
+
+  alert("Mode deleted!");
+}
+
+/* DELETE PLAYER */
+async function deletePlayer(){
+  let name = nameInput.value.trim();
+
+  if(!name){
+    alert("Enter player name");
+    return;
+  }
+
+  await deleteDoc(doc(db,"players",name));
+
+  await addLog("delete_player", name, null, null);
+
+  alert("Player deleted!");
+}
+
+/* BUTTONS */
+document.getElementById("addPlayerBtn").onclick = addPlayer;
+document.getElementById("saveBtn").onclick = updatePlayer;
+document.getElementById("deleteModeBtn").onclick = deleteMode;
+document.getElementById("deletePlayerBtn").onclick = deletePlayer;
+
+/* LIST */
+onSnapshot(collection(db,"players"), (snapshot)=>{
+  let html = "";
+  snapshot.forEach(d=>{
+    let p = d.data();
+    html += `<p onclick="fill('${p.name}')">${p.name}</p>`;
+  });
+  listDiv.innerHTML = html;
+});
+
+/* FILL */
+window.fill = async function(n){
+  let snap = await getDoc(doc(db,"players",n));
+  if(!snap.exists()) return;
+
+  let p = snap.data();
+
+  nameInput.value = p.name;
+  regionInput.value = p.region || "";
+
+  let keys = Object.keys(p.modes || {});
+  if(keys.length){
+    modeSelect.value = keys[0];
+    pointsInput.value = p.modes[keys[0]];
+  }
+};
+
+</script>
+
+</body>
+</html>

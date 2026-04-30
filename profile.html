@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Profile</title>
+
+  <style>
+    body{
+      margin:0;
+      font-family:Segoe UI;
+      background:#0b0b0b;
+      color:white;
+      display:flex;
+      justify-content:center;
+      padding:20px;
+    }
+
+    .card{
+      width:520px;
+      background:#111;
+      border-radius:12px;
+      padding:20px;
+    }
+
+    .top{
+      display:flex;
+      gap:15px;
+      align-items:center;
+      border-bottom:1px solid #222;
+      padding-bottom:10px;
+    }
+
+    .skin{
+      width:80px;
+      border-radius:6px;
+    }
+
+    .name{
+  font-size:22px;
+  font-weight:bold;
+  color:white;
+}
+    .sub{
+      font-size:13px;
+      color:#aaa;
+    }
+
+    .position{
+      margin-top:10px;
+      color:#00ff99;
+    }
+
+    .overall{
+      margin-top:10px;
+      color:#ffd700;
+      font-size:18px;
+    }
+
+    #modes{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:15px;
+      margin-top:15px;
+    }
+
+    .mode{
+      background:#1a1a1a;
+      padding:12px;
+      border-radius:10px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:6px;
+    }
+
+    .progress-bar{
+      width:100%;
+      height:6px;
+      background:#222;
+      border-radius:10px;
+      overflow:hidden;
+      margin-top:6px;
+    }
+
+    .progress-fill{
+      height:100%;
+      background:#00ff99;
+      width:0%;
+      transition:0.4s;
+    }
+
+    .best-mode{
+      border:1px solid gold;
+      box-shadow:0 0 10px rgba(255,215,0,0.5);
+    }
+
+    .tooltip{
+      position:relative;
+      cursor:pointer;
+    }
+
+    .tooltip .tooltip-text{
+      position:absolute;
+      bottom:120%;
+      left:50%;
+      transform:translateX(-50%);
+      background:#000;
+      color:#fff;
+      padding:6px 10px;
+      font-size:11px;
+      border-radius:6px;
+      white-space:nowrap;
+      opacity:0;
+      pointer-events:none;
+      transition:0.2s;
+      border:1px solid #333;
+    }
+
+    .tooltip:hover .tooltip-text{
+      opacity:1;
+    }
+
+    .rank-badge{
+      display:inline-block;
+      padding:4px 8px;
+      border-radius:8px;
+      font-size:12px;
+      font-weight:bold;
+      margin-left:6px;
+    }
+
+    .rank-1{
+      background:gold;
+      color:black;
+      animation: glowGold 2s infinite;
+    }
+
+    @keyframes glowGold{
+      0%{ box-shadow:0 0 5px gold; }
+      50%{ box-shadow:0 0 15px gold; }
+      100%{ box-shadow:0 0 5px gold; }
+    }
+
+    .shiny-wrap{
+      display:inline-block;
+      position:relative;
+      margin-left:6px;
+      vertical-align:middle;
+      overflow:hidden;
+      animation: glowPulse 2s infinite ease-in-out;
+      filter: drop-shadow(0 0 6px gold);
+    }
+
+    .shiny-wrap img{
+      width:22px;
+      display:block;
+    }
+
+    .shiny-wrap::after{
+      content:"";
+      position:absolute;
+      top:0;
+      left:-75%;
+      width:50%;
+      height:100%;
+      background:linear-gradient(120deg,transparent,rgba(255,255,255,0.9),transparent);
+      transform:skewX(-20deg);
+      animation: shineSweep 2.5s infinite;
+    }
+
+    @keyframes shineSweep{
+      0% { left:-75%; }
+      100% { left:125%; }
+    }
+
+    @keyframes glowPulse{
+      0%,100% { filter: drop-shadow(0 0 5px gold); }
+      50% { filter: drop-shadow(0 0 14px gold); }
+    }
+    
+    @keyframes rainbowMove {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+  </style>
+</head>
+
+<body>
+
+<div class="card">
+
+  <div class="top">
+    <img id="skin" class="skin">
+    <div>
+      <div id="name" class="name"></div>
+      <div id="region" class="sub"></div>
+      <div id="title" class="sub"></div>
+    </div>
+  </div>
+
+  <div id="position" class="position"></div>
+  <div id="overall" class="overall"></div>
+
+  <div id="modes"></div>
+
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAzKYVQWthAci583dZqkXi2zm3JHNNMeqk",
+  authDomain: "mc-tiers-ranking.firebaseapp.com",
+  projectId: "mc-tiers-ranking",
+  storageBucket: "mc-tiers-ranking.firebasestorage.app",
+  messagingSenderId: "909650175085",
+  appId: "1:909650175085:web:0fb576c2b8277a58b64b64"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+let params = new URLSearchParams(window.location.search);
+let name = params.get("name");
+let rank = Number(params.get("rank")) || 999;
+let mode = params.get("mode") || "overall";
+
+const nameEl = document.getElementById("name");
+
+/* ---------------- NAME STYLE ---------------- */
+function applyRankStyle(){
+  nameEl.innerText = name || "Unknown";
+
+  if(rank === 1){
+    nameEl.style.background = "linear-gradient(90deg, red, orange, yellow, green, cyan, blue, violet, red)";
+    nameEl.style.backgroundSize = "400% 100%";
+    nameEl.style.webkitBackgroundClip = "text";
+    nameEl.style.webkitTextFillColor = "transparent";
+    nameEl.style.animation = "rainbowMove 4s linear infinite";
+  }
+  else if(rank === 2){
+    nameEl.style.color = "#c0c0c0";
+    nameEl.style.textShadow = "0 0 10px silver";
+  }
+  else if(rank === 3){
+    nameEl.style.color = "#cd7f32";
+    nameEl.style.textShadow = "0 0 10px #cd7f32";
+  }
+  else{
+    nameEl.style.color = "white";
+  }
+}
+applyRankStyle();
+
+/* ---------------- SKIN ---------------- */
+document.getElementById("skin").src =
+  name ? `https://mc-heads.net/avatar/${name}/100`
+       : `https://mc-heads.net/avatar/Steve/100`;
+
+/* ---------------- TIER SYSTEM ---------------- */
+function getTier(p){
+  p = Number(p || 0);
+  if(p < 5) return "-";
+  if(p < 20) return "LT5";
+  if(p < 40) return "HT5";
+  if(p < 70) return "LT4";
+  if(p < 100) return "HT4";
+  if(p < 140) return "LT3";
+  if(p < 180) return "HT3";
+  if(p < 220) return "LT2";
+  if(p < 260) return "HT2";
+  if(p < 300) return "LT1";
+  return "HT1";
+}
+
+function getTierRange(p){
+  if(p < 5) return "0–4";
+  if(p < 20) return "5–19";
+  if(p < 40) return "20–39";
+  if(p < 70) return "40–69";
+  if(p < 100) return "70–99";
+  if(p < 140) return "100–139";
+  if(p < 180) return "140–179";
+  if(p < 220) return "180–219";
+  if(p < 260) return "220–259";
+  if(p < 300) return "260–299";
+  return "300+";
+}
+
+/* ---------------- TITLE ---------------- */
+function getTitle(rank, mode){
+
+  let prefixMap = {
+    overall: "Combat ",
+    uhc: "UHC ",
+    pot: "Pot ",
+    vanilla: "Vanilla ",
+    nethop: "Nethop ",
+    smp: "SMP ",
+    sword: "Sword ",
+    axe: "Axe ",
+    mace: "Mace "
+  };
+
+  let prefix = prefixMap[mode] || "Combat ";
+
+  if(rank === 1){
+    return `<span style="color:gold;font-weight:bold;">${prefix}Grandmaster</span>
+    <span class="shiny-wrap"><img src="https://mctiers.com/titles/combat_grandmaster.webp"></span>`;
+  }
+
+  if(rank >= 2 && rank <= 4){
+    return `<span style="color:#e6e6e6;font-weight:bold;">${prefix}Master</span>
+    <span class="shiny-wrap"><img src="https://mctiers.com/titles/combat_master.webp"></span>`;
+  }
+
+  if(rank >= 5 && rank <= 54){
+    return `<span style="color:#ffcc00;font-weight:bold;">${prefix}Ace</span>
+    <span class="shiny-wrap"><img src="https://mctiers.com/titles/combat_ace.webp"></span>`;
+  }
+
+  return `<span style="color:#aaaaaa;">${prefix}Specialist</span>
+  <span class="shiny-wrap"><img src="https://mctiers.com/titles/combat_specialist.svg"></span>`;
+}
+
+/* ---------------- EXTRA BADGES ---------------- */
+function getExtraBadges(rank, total, modes){
+
+  let badges = [];
+
+  if(rank <= 10){
+    badges.push({
+      name: "Top 10",
+      icon: "https://mctiers.com/titles/combat_ace.webp"
+    });
+  }
+
+  if(total >= 300){
+    badges.push({
+      name: "300+",
+      icon: "https://mctiers.com/titles/combat_grandmaster.webp"
+    });
+  }
+
+  let bestMode = null;
+  let bestPoints = -1;
+
+  for(let m in modes){
+    if(modes[m] > bestPoints){
+      bestPoints = modes[m];
+      bestMode = m;
+    }
+  }
+
+  if(bestMode){
+    badges.push({
+      name: bestMode.toUpperCase(),
+      icon: `https://mctiers.com/tier_icons/${bestMode}.svg`
+    });
+  }
+
+  return badges;
+}
+
+/* ---------------- LOAD ---------------- */
+async function load(){
+
+  if(!name){
+    document.body.innerHTML = "No player selected";
+    return;
+  }
+
+  let ref = doc(db,"players",name);
+  let snap = await getDoc(ref);
+
+  let p;
+  if(snap.exists()){
+    p = snap.data();
+  } else {
+    p = { name, region:"AS", modes:{} };
+    await setDoc(ref, p);
+  }
+
+  let modes = p.modes || {};
+  let total = Object.values(modes).reduce((a,b)=>a+(b||0),0);
+
+  document.getElementById("region").innerText = p.region || "Unknown";
+  document.getElementById("position").innerText =
+    rank !== 999 ? `POSITION #${rank}` : "UNRANKED";
+
+  /* BEST MODE */
+  let bestMode = null;
+  let bestPoints = -1;
+
+  for(let m in modes){
+    if(modes[m] > bestPoints){
+      bestPoints = modes[m];
+      bestMode = m;
+    }
+  }
+
+  document.getElementById("overall").innerHTML =
+    `OVERALL (${total} points)<br>
+     <span style="font-size:14px;color:#aaa;">
+     Best: ${bestMode?.toUpperCase() || "None"}
+     </span>`;
+
+  let badge = rank === 1 ? `<span class="rank-badge rank-1">#1</span>` : "";
+
+  document.getElementById("title").innerHTML =
+    getTitle(rank, mode) + badge;
+
+  /* EXTRA BADGES RENDER */
+  let extra = getExtraBadges(rank, total, modes);
+
+  let extraDiv = document.getElementById("extraBadges");
+  if(extraDiv){
+    extraDiv.innerHTML =
+      extra.map(b=>`
+        <div style="
+          display:inline-flex;
+          align-items:center;
+          gap:5px;
+          margin:4px;
+          padding:4px 8px;
+          background:#1a1a1a;
+          border-radius:6px;
+          font-size:11px;
+        ">
+          <img src="${b.icon}" style="width:16px;">
+          ${b.name}
+        </div>
+      `).join("");
+  }
+
+  /* MODES */
+  let html = "";
+
+  Object.entries(modes)
+    .sort((a,b)=>b[1]-a[1])
+    .forEach(([m, points])=>{
+
+      let percent = Math.min((points / 300) * 100, 100);
+
+      html += `
+        <div class="mode ${m === bestMode ? "best-mode" : ""}">
+          <img src="https://mctiers.com/tier_icons/${m}.svg"
+               style="width:30px;"
+               onerror="this.src='https://mctiers.com/tier_icons/sword.svg';this.onerror=null;">
+          
+          <div class="tooltip" style="font-weight:bold;">
+            ${getTier(points)}
+            <div class="tooltip-text">${getTierRange(points)} points</div>
+          </div>
+
+          <div style="font-size:11px;color:#aaa;">${points} pts</div>
+
+          <div class="progress-bar">
+            <div class="progress-fill" style="width:${percent}%"></div>
+          </div>
+        </div>
+      `;
+    });
+
+  document.getElementById("modes").innerHTML =
+    html || `<div style="text-align:center;color:#aaa;">No stats yet</div>`;
+}
+
+load();
+</script>
+
+</body>
+</html>

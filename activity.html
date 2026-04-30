@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Activity Logs</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      background:#0a0a0a;
+      color:white;
+      font-family:Arial;
+      padding:20px;
+      text-align:center;
+    }
+
+    input, select, button {
+      padding:8px;
+      margin:5px;
+      background:#111;
+      border:1px solid #333;
+      color:white;
+      border-radius:6px;
+    }
+
+    button:hover { background:#222; }
+
+    .log {
+      background:#111;
+      padding:10px;
+      margin:8px 0;
+      border-radius:8px;
+      border:1px solid #222;
+      text-align:left;
+      cursor:pointer;
+    }
+
+    .email { color:#00ff99; font-weight:bold; }
+    .time { font-size:12px; color:#888; }
+  </style>
+</head>
+
+<body>
+
+<!-- LOGIN -->
+<div id="loginBox">
+  <h2>Login to View Activity</h2>
+  <input id="email" placeholder="Email"><br>
+  <input id="password" type="password" placeholder="Password"><br>
+  <button id="loginBtn">Login</button>
+</div>
+
+<!-- PANEL -->
+<div id="panel" style="display:none;">
+
+<h2>Activity Logs</h2>
+
+<button id="logoutBtn">Logout</button>
+<button id="refreshBtn">Refresh</button>
+<button id="liveBtn">Live: ON</button>
+
+<div style="margin:15px 0; display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">
+  <input id="searchPlayer" placeholder="Search player...">
+  <input id="searchEmail" placeholder="Filter by email...">
+
+  <select id="actionFilter">
+    <option value="">All Actions</option>
+    <option value="update">Update</option>
+    <option value="delete">Delete</option>
+    <option value="new_season">New Season</option>
+  </select>
+</div>
+
+<div id="stats"></div>
+
+<canvas id="userChart" style="max-width:600px;margin:20px auto;"></canvas>
+<canvas id="actionChart" style="max-width:600px;margin:20px auto;"></canvas>
+
+<button id="downloadBtn">Download Logs (CSV)</button>
+
+<div id="logs"></div>
+
+</div>
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getFirestore,
+  collection,
+  onSnapshot,
+  query,
+  orderBy
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
+  signOut
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+/* FIREBASE */
+const firebaseConfig = {
+  apiKey: "AIzaSyAzKYVQWthAci583dZqkXi2zm3JHNNMeqk",
+  authDomain: "mc-tiers-ranking.firebaseapp.com",
+  projectId: "mc-tiers-ranking",
+  storageBucket: "mc-tiers-ranking.firebasestorage.app",
+  messagingSenderId: "909650175085",
+  appId: "1:909650175085:web:0fb576c2b8277a58b64b64"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+/* DOM */
+const loginBox = document.getElementById("loginBox");
+const panel = document.getElementById("panel");
+
+const email = document.getElementById("email");
+const password = document.getElementById("password");
+
+const logsDiv = document.getElementById("logs");
+const stats = document.getElementById("stats");
+
+const searchPlayer = document.getElementById("searchPlayer");
+const searchEmail = document.getElementById("searchEmail");
+const actionFilter = document.getElementById("actionFilter");
+
+const userChartCanvas = document.getElementById("userChart");
+const actionChartCanvas = document.getElementById("actionChart");
+
+const loginBtn = document.getElementById("loginBtn");
+const logoutBtn = document.getElementById("logoutBtn");
+const downloadBtn = document.getElementById("downloadBtn");
+const refreshBtn = document.getElementById("refreshBtn");
+const liveBtn = document.getElementById("liveBtn");
+
+const ALLOWED = ["shlokplayz9274@gmail.com"];
+
+let userChart, actionChart;
+let live = true;
+let allLogs = [];
+
+/* LOGIN */
+loginBtn.onclick = async () => {
+  try {
+    await signInWithEmailAndPassword(auth, email.value, password.value);
+  } catch (e) {
+    alert("Login Failed: " + e.message);
+  }
+};
+
+/* LOGOUT */
+logoutBtn.onclick = () => signOut(auth);
+
+/* LIVE TOGGLE */
+liveBtn.onclick = () => {
+  live = !live;
+  liveBtn.innerText = "Live: " + (live ? "ON" : "OFF");
+
+  if (live) loadLogs(); // re-enable updates
+};
+
+/* AUTH */
+onAuthStateChanged(auth, (user) => {
+  if (user && ALLOWED.includes(user.email)) {
+    loginBox.style.display = "none";
+    panel.style.display = "block";
+    loadLogs();
+  } else {
+    loginBox.style.display = "block";
+    panel.style.display = "none";
+
+    if (user) {
+      alert("Access Denied");
+      signOut(auth);
+    }
+  }
+});
+
+/* TIME AGO */
+function timeAgo(date) {
+  let seconds = Math.floor((new Date() - date) / 1000);
+
+  let intervals = [
+    { label: "y", seconds: 31536000 },
+    { label: "mo", seconds: 2592000 },
+    { label: "d", seconds: 86400 },
+    { label: "h", seconds: 3600 },
+    { label: "m", seconds: 60 }
+  ];
+
+  for (let i of intervals) {
+    let count = Math.floor(seconds / i.seconds);
+    if (count > 0) return count + i.label + " ago";
+  }
+  return "just now";
+}
+
+/* LOAD LOGS */
+function loadLogs() {
+  const q = query(collection(db, "logs"), orderBy("time", "desc"));
+
+  onSnapshot(q, (snapshot) => {
+    if (!live) return;
+
+    allLogs = snapshot.docs.map(d => d.data());
+
+    applyFilters();
+  });
+}
+
+/* FILTER + RENDER */
+function applyFilters() {
+
+  let pFilter = searchPlayer.value.toLowerCase();
+  let eFilter = searchEmail.value.toLowerCase();
+  let aFilter = actionFilter.value;
+
+  let filtered = allLogs.filter(l =>
+    (!pFilter || (l.player || "").toLowerCase().includes(pFilter)) &&
+    (!eFilter || (l.email || "").toLowerCase().includes(eFilter)) &&
+    (!aFilter || l.action === aFilter)
+  );
+
+  renderLogs(filtered);
+  renderStats(allLogs);
+  renderCharts(allLogs);
+}
+
+/* LOGS */
+function renderLogs(logs) {
+
+  logsDiv.innerHTML = logs.map(l => {
+
+    let date = l.time?.toDate();
+    let time = date ? timeAgo(date) : "";
+
+    let color =
+      l.action === "delete" ? "#ff4444" :
+      l.action === "update" ? "#00ff99" :
+      l.action === "new_season" ? "#ffd700" :
+      "#aaa";
+
+    return `
+      <div class="log" onclick="navigator.clipboard.writeText('${l.player || ""}')">
+        <div class="email">${l.email}</div>
+        <div style="color:${color}">
+          <b>${l.action}</b> → ${l.player || ""} ${l.mode || ""} ${l.points || ""}
+        </div>
+        <div class="time">${time}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+/* STATS */
+function renderStats(logs) {
+
+  let total = logs.length;
+
+  let map = {};
+  logs.forEach(l => {
+    map[l.email] = (map[l.email] || 0) + 1;
+  });
+
+  let top = Object.entries(map).sort((a, b) => b[1] - a[1])[0];
+
+  let updates = logs.filter(l => l.action === "update").length;
+  let deletes = logs.filter(l => l.action === "delete").length;
+
+  stats.innerHTML = `
+    Total: ${total} <br>
+    Updates: ${updates} | Deletes: ${deletes} <br>
+    Top User: ${top ? top[0] + " (" + top[1] + ")" : "N/A"}
+  `;
+}
+
+/* CHARTS */
+function renderCharts(logs) {
+
+  let userMap = {};
+  let actionMap = {};
+
+  logs.forEach(l => {
+    userMap[l.email] = (userMap[l.email] || 0) + 1;
+    actionMap[l.action] = (actionMap[l.action] || 0) + 1;
+  });
+
+  if (userChart) userChart.destroy();
+  if (actionChart) actionChart.destroy();
+
+  userChart = new Chart(userChartCanvas, {
+    type: "bar",
+    data: {
+      labels: Object.keys(userMap),
+      datasets: [{ label: "Actions per User", data: Object.values(userMap) }]
+    }
+  });
+
+  actionChart = new Chart(actionChartCanvas, {
+    type: "pie",
+    data: {
+      labels: Object.keys(actionMap),
+      datasets: [{ data: Object.values(actionMap) }]
+    }
+  });
+}
+
+/* REFRESH */
+refreshBtn.onclick = loadLogs;
+
+/* CSV FIXED */
+downloadBtn.onclick = () => {
+
+  let rows = [["Email", "Action", "Player", "Mode", "Points", "Time"]];
+
+  allLogs.forEach(l => {
+    rows.push([
+      l.email || "",
+      l.action || "",
+      l.player || "",
+      l.mode || "",
+      l.points || "",
+      l.time?.toDate?.().toLocaleString() || ""
+    ]);
+  });
+
+  let csv = rows.map(r => r.join(",")).join("\n");
+
+  let blob = new Blob([csv], { type: "text/csv" });
+  let url = URL.createObjectURL(blob);
+
+  let a = document.createElement("a");
+  a.href = url;
+  a.download = "logs.csv";
+  a.click();
+};
+
+/* FILTERS */
+searchPlayer.oninput = applyFilters;
+searchEmail.oninput = applyFilters;
+actionFilter.onchange = applyFilters;
+
+</script>
+
+</body>
+</html>
