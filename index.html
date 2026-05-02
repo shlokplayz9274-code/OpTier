@@ -190,8 +190,13 @@
 <script type="module">
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import {
+  getFirestore,
+  collection,
+  onSnapshot
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
+/* ---------------- FIREBASE ---------------- */
 const firebaseConfig = {
   apiKey: "AIzaSyAzKYVQWthAci583dZqkXi2zm3JHNNMeqk",
   authDomain: "mc-tiers-ranking.firebaseapp.com",
@@ -205,99 +210,158 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+/* ---------------- MODES ---------------- */
 const modes = [
-  "overall","uhc","pot","vanilla","nethop","smp","sword","axe","mace"
+  "overall",
+  "uhc",
+  "pot",
+  "vanilla",
+  "nethop",
+  "smp",
+  "sword",
+  "axe",
+  "mace"
 ];
 
 let mode = new URLSearchParams(window.location.search).get("mode") || "overall";
 let searchText = "";
 
+/* ---------------- ELEMENTS ---------------- */
 const tabsDiv = document.getElementById("tabs");
 const table = document.getElementById("table");
 const searchInput = document.getElementById("search");
 const suggestions = document.getElementById("suggestions");
 const title = document.getElementById("title");
 
+/* ---------------- DATA ---------------- */
+let allPlayers = [];
+
+/* ---------------- PAGE TITLE ---------------- */
+title.innerText = mode.toUpperCase() + " Rankings";
+
 /* ---------------- TABS ---------------- */
-modes.forEach(m=>{
+modes.forEach((m) => {
   let btn = document.createElement("div");
-  btn.className = "tab " + (m===mode ? "active" : "");
+  btn.className = "tab " + (m === mode ? "active" : "");
 
   btn.innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-      <img src="https://mctiers.com/tier_icons/${m}.svg"
+      <img 
+        src="https://mctiers.com/tier_icons/${m}.svg"
         style="width:22px;"
-        onerror="this.src='https://mctiers.com/tier_icons/sword.svg';this.onerror=null;">
+        onerror="this.src='https://mctiers.com/tier_icons/sword.svg';this.onerror=null;"
+      >
       <div style="font-size:10px;">${m}</div>
     </div>
   `;
 
-  btn.onclick = ()=> window.location.search = "?mode=" + m;
+  btn.onclick = () => {
+    window.location.search = "?mode=" + m;
+  };
+
   tabsDiv.appendChild(btn);
 });
 
-title.innerText = mode.toUpperCase() + " Rankings";
-
 /* ---------------- SEARCH ---------------- */
-searchInput.addEventListener("input",(e)=>{
+searchInput.addEventListener("input", (e) => {
   searchText = e.target.value.toLowerCase();
   render();
   showSuggestions();
 });
 
-document.addEventListener("click",(e)=>{
-  if(!e.target.closest(".searchBox")){
+/* ---------------- CLOSE SUGGESTIONS ---------------- */
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".searchBox")) {
     suggestions.innerHTML = "";
   }
 });
 
-window.openProfile = function(name){
-  window.location.href = `profile.html?name=${name}`;
+/* ---------------- PROFILE OPEN ---------------- */
+window.openProfile = function(name) {
+  window.location.href = `profile.html?name=${encodeURIComponent(name)}`;
 };
 
-/* ---------------- DATA ---------------- */
-let allPlayers = [];
+/* ---------------- LOADING ---------------- */
+table.innerHTML = "<tr><td colspan='4'>Connecting to database...</td></tr>";
 
-/* loading state */
-table.innerHTML = "<tr><td colspan='4'>Loading...</td></tr>";
+/* ---------------- FIRESTORE LIVE DATA ---------------- */
+onSnapshot(
+  collection(db, "players"),
 
-onSnapshot(collection(db,"players"), (snapshot)=>{
-  allPlayers = [];
-  snapshot.forEach(doc=> allPlayers.push(doc.data()));
-  render();
-});
+  (snapshot) => {
+    console.log("Connected to Firestore");
+    console.log("Docs found:", snapshot.size);
+
+    allPlayers = [];
+
+    if (snapshot.empty) {
+      table.innerHTML = "<tr><td colspan='4'>No players in database</td></tr>";
+      return;
+    }
+
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      console.log("Player data:", data);
+
+      if (data && data.name) {
+        allPlayers.push({
+          name: data.name || "Unknown",
+          region: data.region || "AS",
+          modes: data.modes || {}
+        });
+      }
+    });
+
+    render();
+  },
+
+  (error) => {
+    console.error("Firestore Error:", error);
+
+    table.innerHTML = `
+      <tr>
+        <td colspan="4">
+          ERROR: ${error.message}
+        </td>
+      </tr>
+    `;
+  }
+);
 
 /* ---------------- TIER SYSTEM ---------------- */
-function getTier(p){
-  p = Number(p || 0);
+function getTier(points) {
+  points = Number(points || 0);
 
-  if(p < 5) return "-";
-  if(p < 20) return "LT5";
-  if(p < 40) return "HT5";
-  if(p < 70) return "LT4";
-  if(p < 100) return "HT4";
-  if(p < 140) return "LT3";
-  if(p < 180) return "HT3";
-  if(p < 220) return "LT2";
-  if(p < 260) return "HT2";
-  if(p < 300) return "LT1";
+  if (points < 5) return "-";
+  if (points < 20) return "LT5";
+  if (points < 40) return "HT5";
+  if (points < 70) return "LT4";
+  if (points < 100) return "HT4";
+  if (points < 140) return "LT3";
+  if (points < 180) return "HT3";
+  if (points < 220) return "LT2";
+  if (points < 260) return "HT2";
+  if (points < 300) return "LT1";
 
   return "HT1";
 }
 
-/* ---------------- SUGGESTIONS ---------------- */
-function showSuggestions(){
-  if(!searchText){
+/* ---------------- SEARCH SUGGESTIONS ---------------- */
+function showSuggestions() {
+  if (!searchText) {
     suggestions.innerHTML = "";
     return;
   }
 
   let matches = allPlayers
-    .filter(p => p.name.toLowerCase().includes(searchText))
-    .slice(0,5);
+    .filter((p) =>
+      p.name &&
+      p.name.toLowerCase().includes(searchText)
+    )
+    .slice(0, 5);
 
-  suggestions.innerHTML = matches.map(p=>`
-    <div class="suggestion" onclick="openProfile('${p.name}')">
+  suggestions.innerHTML = matches.map((p) => `
+    <div class="suggestion" onclick="openProfile('${p.name.replace(/'/g, "\\'")}')">
       <img src="https://mc-heads.net/avatar/${p.name}/24">
       <div>${p.name}</div>
     </div>
@@ -305,42 +369,61 @@ function showSuggestions(){
 }
 
 /* ---------------- MAIN RENDER ---------------- */
-function render(){
+function render() {
 
   let players = [...allPlayers];
 
-  if(searchText){
-    players = players.filter(p=>p.name.toLowerCase().includes(searchText));
+  /* Search filter */
+  if (searchText) {
+    players = players.filter((p) =>
+      p.name &&
+      p.name.toLowerCase().includes(searchText)
+    );
   }
 
-  players.sort((a,b)=>{
-    if(mode === "overall"){
-      let ta = Object.values(a.modes||{}).reduce((x,y)=>x+y,0);
-      let tb = Object.values(b.modes||{}).reduce((x,y)=>x+y,0);
+  /* Sort */
+  players.sort((a, b) => {
+
+    if (mode === "overall") {
+
+      let ta = Object.values(a.modes || {}).reduce(
+        (x, y) => x + Number(y || 0),
+        0
+      );
+
+      let tb = Object.values(b.modes || {}).reduce(
+        (x, y) => x + Number(y || 0),
+        0
+      );
+
       return tb - ta;
     }
-    return (b.modes?.[mode]||0) - (a.modes?.[mode]||0);
+
+    return Number(b.modes?.[mode] || 0) - Number(a.modes?.[mode] || 0);
   });
 
   let html = "";
   let rank = 1;
 
-  players.forEach((p)=>{
+  players.forEach((p) => {
 
-    if(mode !== "overall" && !(mode in (p.modes||{}))) return;
+    if (mode !== "overall" && !(mode in (p.modes || {}))) return;
 
     let i = rank - 1;
 
     let rankClass =
-      i===0 ? "rank1" :
-      i===1 ? "rank2" :
-      i===2 ? "rank3" : "";
+      i === 0 ? "rank1" :
+      i === 1 ? "rank2" :
+      i === 2 ? "rank3" : "";
 
     let nameStyle =
-      i===0 ? "background:linear-gradient(45deg,#00f,#0ff);-webkit-background-clip:text;color:transparent;" :
-      i===1 ? "color:#ff4444;" :
-      i===2 ? "color:#ffaa00;" :
-      "color:#00ff99;";
+      i === 0
+        ? "background:linear-gradient(45deg,#00f,#0ff);-webkit-background-clip:text;color:transparent;"
+        : i === 1
+        ? "color:#ff4444;"
+        : i === 2
+        ? "color:#ffaa00;"
+        : "color:#00ff99;";
 
     html += `
       <tr class="${rankClass}">
@@ -352,7 +435,7 @@ function render(){
               <img src="https://mc-heads.net/avatar/${p.name}/48">
             </div>
 
-            <a href="profile.html?name=${p.name}&rank=${rank}"
+            <a href="profile.html?name=${encodeURIComponent(p.name)}&rank=${rank}"
                style="${nameStyle}">
               ${p.name}
             </a>
@@ -364,22 +447,22 @@ function render(){
         <td style="display:flex;gap:10px;flex-wrap:wrap;">
           ${
             mode === "overall"
-              ? Object.keys(p.modes || {}).map(m=>`
-                  <div style="text-align:center;">
-                    <img src="https://mctiers.com/tier_icons/${m}.svg"
-                         style="width:22px;"
-                         onerror="this.src='https://mctiers.com/tier_icons/sword.svg';this.onerror=null;">
-                    <div style="font-size:11px;">${getTier(p.modes[m])}</div>
-                  </div>
-                `).join("")
+              ? Object.keys(p.modes || {}).map((m) => `
+                <div style="text-align:center;">
+                  <img src="https://mctiers.com/tier_icons/${m}.svg"
+                       style="width:22px;"
+                       onerror="this.src='https://mctiers.com/tier_icons/sword.svg';this.onerror=null;">
+                  <div style="font-size:11px;">${getTier(p.modes[m])}</div>
+                </div>
+              `).join("")
               : `
-                  <div style="text-align:center;">
-                    <img src="https://mctiers.com/tier_icons/${mode}.svg"
-                         style="width:22px;"
-                         onerror="this.src='https://mctiers.com/tier_icons/sword.svg';this.onerror=null;">
-                    <div style="font-size:11px;">${getTier(p.modes?.[mode])}</div>
-                  </div>
-                `
+                <div style="text-align:center;">
+                  <img src="https://mctiers.com/tier_icons/${mode}.svg"
+                       style="width:22px;"
+                       onerror="this.src='https://mctiers.com/tier_icons/sword.svg';this.onerror=null;">
+                  <div style="font-size:11px;">${getTier(p.modes?.[mode])}</div>
+                </div>
+              `
           }
         </td>
       </tr>
@@ -388,7 +471,8 @@ function render(){
     rank++;
   });
 
-  table.innerHTML = html || "<tr><td colspan='4'>No players found</td></tr>";
+  table.innerHTML =
+    html || "<tr><td colspan='4'>No players found</td></tr>";
 }
 
 </script>
