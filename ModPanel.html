@@ -1,0 +1,237 @@
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Moderator Panel</title>
+
+  <style>
+    body {
+      background:#0a0a0a;
+      color:white;
+      font-family:Arial;
+      text-align:center;
+    }
+
+    input, select {
+      margin:5px;
+      padding:8px;
+      background:#111;
+      border:1px solid #333;
+      color:white;
+    }
+
+    button {
+      padding:8px 12px;
+      margin:5px;
+      cursor:pointer;
+      background:#1a1a1a;
+      border:1px solid #333;
+      color:white;
+    }
+
+    button:hover { background:#222; }
+
+    #list p {
+      cursor:pointer;
+      padding:4px;
+    }
+
+    #list p:hover {
+      color:#00ff99;
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- LOGIN -->
+<div id="loginBox">
+  <h2>Moderator Login</h2>
+  <input id="password" type="password" placeholder="Moderator Password"><br>
+  <button id="loginBtn">Login</button>
+</div>
+
+<!-- MOD PANEL -->
+<div id="adminPanel" style="display:none;">
+
+<h2>Moderator Panel</h2>
+
+<button id="logoutBtn">Logout</button>
+
+<hr>
+
+<input id="name" placeholder="Player Name"><br>
+
+<select id="mode"></select><br>
+
+<input id="points" type="number" placeholder="Points"><br>
+<input id="region" placeholder="Region (AS/EU/NA)"><br>
+
+<button id="saveBtn">Save / Update</button>
+
+<button id="deleteModeBtn" style="background:#ff4444;">
+  Remove Mode Points
+</button>
+
+<hr>
+
+<h3>Players List</h3>
+<div id="list"></div>
+
+</div>
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getFirestore,
+  doc,
+  setDoc,
+  getDoc,
+  collection,
+  onSnapshot,
+  updateDoc,
+  deleteField
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAzKYVQWthAci583dZqkXi2zm3JHNNMeqk",
+  authDomain: "mc-tiers-ranking.firebaseapp.com",
+  projectId: "mc-tiers-ranking",
+  storageBucket: "mc-tiers-ranking.firebasestorage.app",
+  messagingSenderId: "909650175085",
+  appId: "1:909650175085:web:0fb576c2b8277a58b64b64",
+  measurementId: "G-FN7248NLYR"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const modes = [
+  "overall",
+  "uhc",
+  "pot",
+  "vanilla",
+  "nethop",
+  "smp",
+  "sword",
+  "axe",
+  "mace",
+];
+
+const modeSelect = document.getElementById("mode");
+
+modes.forEach(m=>{
+  let opt = document.createElement("option");
+  opt.value = m;
+  opt.innerText = m.toUpperCase();
+  modeSelect.appendChild(opt);
+});
+
+const MOD_PASSWORD = "Priyesh@18863";
+
+loginBtn.onclick = () => {
+  if(password.value === MOD_PASSWORD){
+    loginBox.style.display = "none";
+    adminPanel.style.display = "block";
+  } else {
+    alert("Wrong Password!");
+  }
+};
+
+logoutBtn.onclick = () => {
+  loginBox.style.display = "block";
+  adminPanel.style.display = "none";
+  password.value = "";
+};
+
+async function save(){
+
+  let name = document.getElementById("name").value.trim();
+  let mode = document.getElementById("mode").value;
+  let points = Number(document.getElementById("points").value);
+  let region = document.getElementById("region").value || "AS";
+
+  if(!name || !mode || isNaN(points)){
+    alert("Fill all fields!");
+    return;
+  }
+
+  let ref = doc(db,"players",name);
+  let snap = await getDoc(ref);
+
+  let data = snap.exists() ? snap.data() : { name, modes:{} };
+
+  if(!data.modes) data.modes = {};
+
+  data.modes[mode] = points;
+  data.region = region;
+
+  await setDoc(ref,data);
+
+  alert("Saved / Updated!");
+}
+
+async function deleteMode(){
+
+  let name = document.getElementById("name").value.trim();
+  let mode = document.getElementById("mode").value;
+
+  if(!name || !mode){
+    alert("Enter player + mode");
+    return;
+  }
+
+  if(!confirm(`Remove mode "${mode}" from ${name}?`)) return;
+
+  await updateDoc(doc(db,"players",name), {
+    [`modes.${mode}`]: deleteField()
+  });
+
+  alert("Mode removed!");
+}
+
+saveBtn.onclick = save;
+deleteModeBtn.onclick = deleteMode;
+
+onSnapshot(collection(db,"players"), (snapshot)=>{
+
+  let html = "";
+
+  snapshot.forEach(docSnap=>{
+    let p = docSnap.data();
+    html += `<p data-name="${p.name}">${p.name}</p>`;
+  });
+
+  list.innerHTML = html;
+
+  document.querySelectorAll("#list p").forEach(el=>{
+    el.onclick = ()=> fill(el.dataset.name);
+  });
+
+});
+
+window.fill = async function(name){
+
+  let snap = await getDoc(doc(db,"players",name));
+
+  if(!snap.exists()) return;
+
+  let p = snap.data();
+
+  document.getElementById("name").value = p.name;
+  document.getElementById("region").value = p.region || "";
+
+  let keys = Object.keys(p.modes || {});
+  if(keys.length){
+    document.getElementById("mode").value = keys[0];
+    document.getElementById("points").value = p.modes[keys[0]];
+  }
+};
+
+</script>
+
+</body>
+</html>
+```
